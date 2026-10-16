@@ -39,7 +39,7 @@ Each editor must have its own node objects. To render several editors from the s
 
 Control the document with an external value and store editor changes with `onValueChange`. Passing both `value` and `initialValue` throws. The first value initializes the editor as `initialValue` does; later external changes are applied in a layout effect through `Transforms.setChildren`, preserving selection and recording operations for history.
 
-The exact value object emitted by `onValueChange` is skipped when echoed back. Keep unchanged node objects when updating a value: identity makes unchanged subtrees cheap to recognize and lets moves preserve their selections. Deep-equal clones emit no operations but require a content comparison. External values are normalized; accept the normalized `onValueChange` result to converge.
+The exact value object emitted by `onValueChange` is skipped when echoed back. Keep unchanged node objects when updating a value: identity makes unchanged subtrees cheap to recognize and lets moves preserve their selections. Deep-equal clones emit no operations but require a content comparison. Subsequent external values are normalized; accept the normalized `onValueChange` result to converge.
 
 Updates wait while the editor is composing or Android has a pending action or text diff. Only the latest pending value is applied after those finish; pending work is cancelled when the provider unmounts or its editor changes. This waits for native editing to finish; it does not merge conflicting edits made independently to the same content.
 

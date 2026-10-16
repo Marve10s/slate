@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { act, render } from '@testing-library/react'
+import { act, fireEvent, render } from '@testing-library/react'
 import { createEditor, Descendant, Editor, Transforms } from 'slate'
 import { withHistory, HistoryEditor } from 'slate-history'
 import {
@@ -8,6 +8,15 @@ import {
   IS_COMPOSING,
 } from 'slate-dom'
 import { Editable, Slate, withReact } from '../src'
+
+Object.defineProperty(HTMLElement.prototype, 'isContentEditable', {
+  get() {
+    return (
+      this.closest('[contenteditable]')?.getAttribute('contenteditable') ===
+      'true'
+    )
+  },
+})
 
 const doc = (text: string): Descendant[] => [{ children: [{ text }] }]
 const setup = () => {
@@ -222,4 +231,25 @@ it('can restore a previous value object after accepting an editor echo', async (
   expect(container.textContent).toContain('a')
   expect(Editor.string(editor, [])).toBe('a')
   await act(async () => {})
+})
+
+it('holds an external update from compositionstart before any compositionupdate', async () => {
+  jest.useFakeTimers()
+  const editor = setup()
+  const { getByRole, rerender } = render(view(editor, doc('initial')))
+  const textbox = getByRole('textbox')
+  fireEvent.compositionStart(textbox, { data: '' })
+  rerender(view(editor, doc('external')))
+  expect(Editor.string(editor, [])).toBe('initial')
+  await act(async () => {
+    await jest.advanceTimersByTimeAsync(20)
+  })
+  expect(Editor.string(editor, [])).toBe('initial')
+  await act(async () => {
+    fireEvent.compositionEnd(textbox, { data: '' })
+  })
+  await act(async () => {
+    await jest.advanceTimersByTimeAsync(20)
+  })
+  expect(Editor.string(editor, [])).toBe('external')
 })

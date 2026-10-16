@@ -15,6 +15,7 @@ import {
   EDITOR_TO_PENDING_DIFFS,
 } from 'slate-dom'
 import { FocusedContext } from '../hooks/use-focused'
+import { EDITOR_TO_COMPOSING } from '../hooks/use-composing'
 import { useIsomorphicLayoutEffect } from '../hooks/use-isomorphic-layout-effect'
 import {
   useSelectorContext,
@@ -156,6 +157,7 @@ export const Slate = (props: {
       if (controlledValue === lastAppliedValue.current) return
       if (
         ReactEditor.isComposing(editor) ||
+        EDITOR_TO_COMPOSING.get(editor) ||
         EDITOR_TO_PENDING_ACTION.get(editor) ||
         EDITOR_TO_PENDING_DIFFS.get(editor)?.length
       ) {
