@@ -170,19 +170,35 @@ You can emulate this strategy for any format you like. You can serialize to HTML
 
 > 🤖 Note that even though you _can_ serialize your content however you like, there are tradeoffs. The serialization process has a cost itself, and certain formats may be harder to work with than others. In general we recommend writing your own format only if your use case has a specific need for it. Otherwise, you're often better leaving the data in the format Slate uses.
 
-If you want to update the editor's content in response to events from outside of Slate, you need to change the children property directly. The simplest way is to replace the value of editor.children `editor.children = newValue` and trigger a re-rendering (e.g. by calling `editor.onChange()` in the example above). Alternatively, you can use Slate's internal operations to transform the value, for example:
+## Changes from outside the editor
 
-Pass a non-empty array of blocks to the following helper. To clear the editor in this walkthrough, pass `[{ type: 'paragraph', children: [{ text: '' }] }]`.
+Use `value` and `onValueChange` when a store, server response or stream owns the document:
 
-```typescript
-import { Descendant, Editor, Transforms } from 'slate'
+```tsx
+import React, { useState } from 'react'
+import { createEditor, Descendant } from 'slate'
+import { Editable, Slate, withReact } from 'slate-react'
 
-const resetNodes = (editor: Editor, nodes: Descendant[]) => {
-  Editor.withoutNormalizing(editor, () => {
-    for (let index = editor.children.length - 1; index >= 0; index--) {
-      Transforms.removeNodes(editor, { at: [index] })
-    }
-    Transforms.insertNodes(editor, nodes, { at: [0], select: true })
-  })
+const App = () => {
+  const [editor] = useState(() => withReact(createEditor()))
+  const [value, setValue] = useState<Descendant[]>([
+    { type: 'paragraph', children: [{ text: '' }] },
+  ])
+
+  return (
+    <Slate editor={editor} value={value} onValueChange={setValue}>
+      <Editable />
+    </Slate>
+  )
 }
 ```
+
+Update `value` to apply external changes. Do not pass `initialValue` together with `value`. Slate diffs the document with operations, so the selection moves with changes and `withHistory` records each external update as its own undo step. Passing back the exact object from `onValueChange` does not reapply it.
+
+Keep unchanged node objects in your updates, for example `setValue(current => [current[0], updatedBlock])`. Shared nodes moved between parents retain their selections. A rebuilt, deep-equal clone emits no operations but costs a content comparison. Accept normalized values emitted by `onValueChange`.
+
+For imperative updates, use `Transforms.setChildren(editor, nextValue)`. To clear the editor, provide a schema-valid empty block such as `[{ type: 'paragraph', children: [{ text: '' }] }]`. Direct assignment to `editor.children` bypasses selection mapping and history.
+
+Use `applyValue` to supply another policy, such as `HistoryEditor.withoutSaving` for a stream into a separate block. Unsaved updates do not rebase older history: changing paths or offsets used by existing undo entries requires your own history policy. External updates wait while composition or pending Android input is active; this is not a conflict-resolution protocol for edits to the same content.
+
+See the [controlled value API](../libraries/slate-react/slate.md#propsvalue-descendant) and the [Controlled value example](https://www.slatejs.org/examples/controlled-value).

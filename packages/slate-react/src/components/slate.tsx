@@ -1,6 +1,19 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { Descendant, Editor, Node, Operation, Scrubber, Selection } from 'slate'
-import { copyNodeInUse, EDITOR_TO_ON_CHANGE } from 'slate-dom'
+import {
+  Descendant,
+  Editor,
+  Node,
+  Operation,
+  Scrubber,
+  Selection,
+  Transforms,
+} from 'slate'
+import {
+  copyNodeInUse,
+  EDITOR_TO_ON_CHANGE,
+  EDITOR_TO_PENDING_ACTION,
+  EDITOR_TO_PENDING_DIFFS,
+} from 'slate-dom'
 import { FocusedContext } from '../hooks/use-focused'
 import { useIsomorphicLayoutEffect } from '../hooks/use-isomorphic-layout-effect'
 import {
@@ -19,6 +32,8 @@ import { REACT_MAJOR_VERSION } from '../utils/environment'
 export const Slate = (props: {
   editor: ReactEditor
   initialValue?: Descendant[] | undefined
+  value?: Descendant[] | undefined
+  applyValue?: ((editor: ReactEditor, value: Descendant[]) => void) | undefined
   children: React.ReactNode
   onChange?: ((value: Descendant[]) => void) | undefined
   onSelectionChange?: ((selection: Selection) => void) | undefined
@@ -31,10 +46,25 @@ export const Slate = (props: {
     onSelectionChange,
     onValueChange,
     initialValue,
+    value: controlledValue,
+    applyValue = Transforms.setChildren,
     ...rest
   } = props
 
   const initializedEditor = useRef<ReactEditor | null>(null)
+  const lastEmittedValue = useRef<Descendant[] | undefined>(undefined)
+  const lastAppliedValue = useRef<Descendant[] | undefined>(undefined)
+
+  if (controlledValue !== undefined && initialValue !== undefined) {
+    throw new Error('[Slate] value and initialValue cannot be used together.')
+  }
+  if (controlledValue !== undefined && !Node.isNodeList(controlledValue)) {
+    throw new Error(
+      `[Slate] value is invalid! Expected a list of elements but got: ${Scrubber.stringify(
+        controlledValue
+      )}`
+    )
+  }
 
   if (initializedEditor.current !== editor) {
     if (!Editor.isEditor(editor)) {
@@ -43,13 +73,17 @@ export const Slate = (props: {
       )
     }
 
-    if (initialValue === undefined && editor.children.length === 0) {
+    if (
+      initialValue === undefined &&
+      controlledValue === undefined &&
+      editor.children.length === 0
+    ) {
       throw new Error(
         '[Slate] editor.children is empty and no initialValue was provided. If this is intentional, pass initialValue={[]} to the Slate component.'
       )
     }
 
-    const value = initialValue ?? editor.children
+    const value = initialValue ?? controlledValue ?? editor.children
 
     if (!Node.isNodeList(value)) {
       throw new Error(
@@ -59,7 +93,10 @@ export const Slate = (props: {
       )
     }
 
-    const copied = initialValue === undefined ? value : value.map(copyNodeInUse)
+    const copied =
+      initialValue === undefined && controlledValue === undefined
+        ? value
+        : value.map(copyNodeInUse)
     const children = copied.every((node, i) => node === value[i])
       ? value
       : copied
@@ -70,12 +107,17 @@ export const Slate = (props: {
         : [{ children: [{ text: '' }] } as Descendant]
     Object.assign(editor, rest)
     initializedEditor.current = editor
+    lastEmittedValue.current = undefined
+    lastAppliedValue.current = controlledValue
   }
 
   const { selectorContext, onChange: handleSelectorChange } =
     useSelectorContext()
 
   const onContextChange = useCallback(() => {
+    if (editor.operations.some(op => op.type !== 'set_selection')) {
+      lastEmittedValue.current = editor.children
+    }
     if (onChange) {
       onChange(editor.children)
     }
@@ -95,13 +137,41 @@ export const Slate = (props: {
     handleSelectorChange()
   }, [editor, handleSelectorChange, onChange, onSelectionChange, onValueChange])
 
-  useEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     EDITOR_TO_ON_CHANGE.set(editor, onContextChange)
 
     return () => {
       EDITOR_TO_ON_CHANGE.set(editor, () => {})
     }
   }, [editor, onContextChange])
+
+  useIsomorphicLayoutEffect(() => {
+    let frame: number | undefined
+    const apply = () => {
+      if (controlledValue === undefined) return
+      if (controlledValue === lastEmittedValue.current) {
+        lastAppliedValue.current = controlledValue
+        return
+      }
+      if (controlledValue === lastAppliedValue.current) return
+      if (
+        ReactEditor.isComposing(editor) ||
+        EDITOR_TO_PENDING_ACTION.get(editor) ||
+        EDITOR_TO_PENDING_DIFFS.get(editor)?.length
+      ) {
+        frame = window.requestAnimationFrame(apply)
+        return
+      }
+      const previous = editor.children
+      lastAppliedValue.current = controlledValue
+      applyValue(editor, controlledValue)
+      if (previous !== editor.children) handleSelectorChange()
+    }
+    apply()
+    return () => {
+      if (frame !== undefined) window.cancelAnimationFrame(frame)
+    }
+  }, [editor, controlledValue, applyValue, handleSelectorChange])
 
   const [isFocused, setIsFocused] = useState(ReactEditor.isFocused(editor))
 
