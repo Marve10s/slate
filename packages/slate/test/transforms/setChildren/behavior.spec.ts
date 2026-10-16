@@ -5,6 +5,8 @@ import {
   Editor,
   Element,
   Node,
+  Operation,
+  Path,
   Point,
   Transforms,
 } from 'slate'
@@ -268,4 +270,51 @@ it('replaces nodes when differing properties cannot be changed by set_node', () 
     editor.operations.map(op => op.type),
     ['remove_node', 'insert_node']
   )
+})
+
+it('preserves custom dirty paths and normalization order across batched moves', () => {
+  const first = block('first')
+  const second = block('second')
+  const third = block('third')
+  const initial = [
+    { type: 'container', children: [first, second] },
+    { type: 'container', children: [third] },
+    block('last'),
+  ]
+  const next = [
+    { type: 'container', children: [third, block('changed')] },
+    { type: 'container', children: [second, first] },
+  ]
+  const create = () => {
+    const editor = setup(initial)
+    const visited: Path[] = []
+    const dirtied: Operation[] = []
+    const { getDirtyPaths, normalizeNode } = editor
+    editor.getDirtyPaths = op => {
+      dirtied.push(op)
+      return [...getDirtyPaths(op), [0]]
+    }
+    editor.normalizeNode = entry => {
+      visited.push(entry[1])
+      if (Element.isElement(entry[0]) && entry[0].type === 'paragraph') {
+        Transforms.setNodes(editor, { type: 'normalized' }, { at: entry[1] })
+      }
+      normalizeNode(entry)
+    }
+    return { editor, visited, dirtied }
+  }
+  const actual = create()
+  let operations: Operation[] = []
+  Editor.withoutNormalizing(actual.editor, () => {
+    Transforms.setNodes(actual.editor, { type: 'pending' }, { at: [2] })
+    Transforms.setChildren(actual.editor, next)
+    operations = [...actual.editor.operations]
+  })
+  const reference = create()
+  Editor.withoutNormalizing(reference.editor, () => {
+    for (const op of operations) reference.editor.apply(op)
+  })
+  assert.deepStrictEqual(actual.editor.children, reference.editor.children)
+  assert.deepStrictEqual(actual.visited, reference.visited)
+  assert.deepStrictEqual(actual.dirtied, reference.dirtied)
 })

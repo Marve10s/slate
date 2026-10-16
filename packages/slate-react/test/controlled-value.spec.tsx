@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useLayoutEffect, useState } from 'react'
 import { act, fireEvent, render } from '@testing-library/react'
 import { createEditor, Descendant, Editor, Transforms } from 'slate'
 import { withHistory, HistoryEditor } from 'slate-history'
@@ -252,4 +252,62 @@ it('holds an external update from compositionstart before any compositionupdate'
     await jest.advanceTimersByTimeAsync(20)
   })
   expect(Editor.string(editor, [])).toBe('external')
+})
+
+for (const controlled of [false, true]) {
+  it(`registers ${
+    controlled ? 'controlled' : 'uncontrolled'
+  } onChange during the ${controlled ? 'layout' : 'passive'} phase`, () => {
+    const editor = setup()
+    const onChange = jest.fn()
+    const App = () => {
+      useLayoutEffect(() => {
+        editor.onChange()
+      }, [])
+      return (
+        <Slate
+          editor={editor}
+          {...(controlled
+            ? { value: doc('initial') }
+            : { initialValue: doc('initial') })}
+          onChange={onChange}
+        >
+          <Editable />
+        </Slate>
+      )
+    }
+    render(<App />)
+    expect(onChange).toHaveBeenCalledTimes(controlled ? 1 : 0)
+    onChange.mockClear()
+    act(() => editor.onChange())
+    expect(onChange).toHaveBeenCalledTimes(1)
+  })
+}
+
+it('keeps the current callback registered when switching controlled mode', () => {
+  const editor = setup()
+  const first = jest.fn()
+  const second = jest.fn()
+  const third = jest.fn()
+  const { rerender } = render(
+    <Slate editor={editor} initialValue={doc('initial')} onChange={first}>
+      <Editable />
+    </Slate>
+  )
+  rerender(
+    <Slate editor={editor} value={editor.children} onChange={second}>
+      <Editable />
+    </Slate>
+  )
+  act(() => editor.onChange())
+  expect(first).not.toHaveBeenCalled()
+  expect(second).toHaveBeenCalledTimes(1)
+  rerender(
+    <Slate editor={editor} onChange={third}>
+      <Editable />
+    </Slate>
+  )
+  act(() => editor.onChange())
+  expect(second).toHaveBeenCalledTimes(1)
+  expect(third).toHaveBeenCalledTimes(1)
 })

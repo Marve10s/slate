@@ -138,13 +138,24 @@ export const Slate = (props: {
     handleSelectorChange()
   }, [editor, handleSelectorChange, onChange, onSelectionChange, onValueChange])
 
-  useIsomorphicLayoutEffect(() => {
-    EDITOR_TO_ON_CHANGE.set(editor, onContextChange)
-
+  const controlled = controlledValue !== undefined
+  const registerOnChange = useCallback(() => {
+    const callback = () => onContextChange()
+    EDITOR_TO_ON_CHANGE.set(editor, callback)
     return () => {
-      EDITOR_TO_ON_CHANGE.set(editor, () => {})
+      if (EDITOR_TO_ON_CHANGE.get(editor) === callback) {
+        EDITOR_TO_ON_CHANGE.delete(editor)
+      }
     }
   }, [editor, onContextChange])
+
+  useEffect(() => {
+    if (!controlled) return registerOnChange()
+  }, [controlled, registerOnChange])
+
+  useIsomorphicLayoutEffect(() => {
+    if (controlled) return registerOnChange()
+  }, [controlled, registerOnChange])
 
   useIsomorphicLayoutEffect(() => {
     let frame: number | undefined
