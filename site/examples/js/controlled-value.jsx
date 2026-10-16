@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { createEditor, Transforms } from 'slate'
+import { createEditor, Element, Transforms } from 'slate'
 import { HistoryEditor, withHistory } from 'slate-history'
 import { Editable, Slate, withReact } from 'slate-react'
 
@@ -16,12 +16,18 @@ const chunks = [
   'another ',
   'block.',
 ]
+const createStreamBlock = text => ({
+  type: 'paragraph',
+  streamOutput: true,
+  children: [{ text }],
+})
+const isStreamBlock = node =>
+  Element.isElement(node) &&
+  'streamOutput' in node &&
+  node.streamOutput === true
 const initialValue = [
   { type: 'paragraph', children: [{ text: 'Type here: ' }] },
-  {
-    type: 'paragraph',
-    children: [{ text: 'Stream output will appear here.' }],
-  },
+  createStreamBlock('Stream output will appear here.'),
 ]
 const ControlledValueExample = () => {
   const editor = useMemo(() => withReact(withHistory(createEditor())), [])
@@ -37,6 +43,16 @@ const ControlledValueExample = () => {
     },
     [editor]
   )
+  const updateTypedBlocks = useCallback(next => {
+    setValue(current => {
+      const output = current[current.length - 1]
+      if (next[next.length - 1] === output) return next
+      const input = next.filter(node => !isStreamBlock(node))
+      if (!input.length)
+        input.push({ type: 'paragraph', children: [{ text: '' }] })
+      return [...input, output]
+    })
+  }, [])
   useEffect(
     () => () => {
       if (timer.current) clearInterval(timer.current)
@@ -52,8 +68,8 @@ const ControlledValueExample = () => {
       text += chunks[index++]
       const streamed = text
       setValue(current => [
-        current[0],
-        { type: 'paragraph', children: [{ text: streamed }] },
+        ...current.slice(0, -1),
+        createStreamBlock(streamed),
       ])
       if (index === chunks.length) {
         clearInterval(timer.current)
@@ -84,7 +100,7 @@ const ControlledValueExample = () => {
         editor={editor}
         value={value}
         applyValue={applyValue}
-        onValueChange={setValue}
+        onValueChange={updateTypedBlocks}
       >
         <Editable aria-label="Controlled editor" placeholder="Type here..." />
       </Slate>

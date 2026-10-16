@@ -41,7 +41,7 @@ Control the document with an external value and store editor changes with `onVal
 
 The exact value object emitted by `onValueChange` is skipped when echoed back. Keep unchanged node objects when updating a value: identity makes unchanged subtrees cheap to recognize and lets moves preserve their selections. Deep-equal clones emit no operations but require a content comparison. Subsequent external values are normalized; accept the normalized `onValueChange` result to converge.
 
-Updates wait while the editor is composing or Android has a pending action or text diff. Only the latest pending value is applied after those finish; pending work is cancelled when the provider unmounts or its editor changes. This waits for native editing to finish; it does not merge conflicting edits made independently to the same content.
+Updates wait while the editor is composing or Android has a pending action or text diff. Only the latest pending value is applied after those finish; pending work is cancelled when the provider unmounts or its editor changes. This waits for native editing to finish; it does not merge conflicting edits made independently to the same content. A local value emitted while an external update is held can still contain older external content. Merge app-owned parts into your store, as the controlled-value example does, so the emitted snapshot does not replace pending stream data.
 
 #### `props.applyValue?: (editor: ReactEditor, value: Descendant[]) => void`
 
